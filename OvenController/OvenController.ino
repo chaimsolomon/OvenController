@@ -15,7 +15,7 @@
 // gray
 #define pin_light 8 
 
-#define max_menu_state 6
+#define max_menu_state 3
 #define max_oven_state 3
 
 #define eepr_oven_state_addr 0
@@ -48,9 +48,9 @@ double ki=0.25;
 double kd=0;
 long clock=0;
 // PID
-double Setpoint = 170.0, Input=20.0, Output=2.0;
+double Setpoint = 170.0, Input=20.0, Output=2.0, Difference=0;
 //PID(&Input, &Output, &Setpoint, Kp, Ki, Kd, Direction)
-PID myPID(&Input, &Output, &Setpoint, kp, ki, kd, DIRECT);
+//PID myPID(&Input, &Output, &Setpoint, kp, ki, kd, DIRECT);
 
 int volatile timerstate = 0;
 
@@ -76,6 +76,10 @@ void timercallback(){
       Input = thermocouple.readCelsius();
     break;
     case 2:
+      Difference = (Setpoint - Input);
+      if (Difference > 10) Difference = 10.0;
+      if (Difference < 0) Difference = 0;
+      Output = 20 * Difference;
     break;
     case 3:
     break;
@@ -127,11 +131,11 @@ EEPROM.get(eepr_kd_addr, kd);
 
   menu = 0;
   lcd.init(); // initialize the lcd 
-  myPID.SetMode(AUTOMATIC);
-  myPID.SetOutputLimits(0, 200);
-  myPID.SetSampleTime(1000);
+//  myPID.SetMode(AUTOMATIC);
+//  myPID.SetOutputLimits(0, 200);
+//  myPID.SetSampleTime(1000);
 
-  myPID.SetTunings(kp, ki, kd);
+//  myPID.SetTunings(kp, ki, kd);
   timerstate = 0;
   Timer1.initialize(100000);
   Timer1.attachInterrupt(timercallback);
@@ -163,11 +167,58 @@ EEPROM.get(eepr_kd_addr, kd);
 }
 
 void loop() {
-  myPID.Compute();
+//  myPID.Compute();
 
+   lcd.clear();
+  
   lcd.setCursor(0,0);
-  lcd.print("                    ");
-  lcd.setCursor(0,0);
+  switch (oven_state) {
+    case 0:
+      lcd.print("off      ");
+      break;
+    case 1:
+      lcd.print("light on ");
+      break;
+    case 2:
+      lcd.print("Oven on no fan");
+      break;
+    case 3:
+      lcd.print("Oven on with fan ");
+      break;
+    default:
+      oven_state = 0;
+      break;
+  }
+  lcd.setCursor(0,1);
+  lcd.print("        ");
+  lcd.setCursor(0,1);
+  //lcd.print(clock);
+  if (clock >= 0) {
+    lcd.print(clock/3600);
+    lcd.print(":");
+    lcd.print((clock/60)%60);
+    lcd.print(":");
+    lcd.print(clock%60);  
+  }
+  else {
+    lcd.print("No timer");
+  }
+  lcd.print(" ");
+
+  lcd.print(Setpoint);
+  lcd.print(" deg C");
+  lcd.setCursor(0,2);
+
+  lcd.print(Input);
+  lcd.print(" ");
+  
+  lcd.print(top_bottom);
+  lcd.print("   ");
+  lcd.print(top_pwm_sp);
+  lcd.print(" ");
+  lcd.print(bottom_pwm_sp);
+
+  lcd.setCursor(0,3);
   switch (menu) {
   case 0:
   lcd.print("Mode");
@@ -179,74 +230,11 @@ void loop() {
   lcd.print("Timer set");
   break;
   case 3:
-  lcd.print("Characteristic");
-  break;
-  case 4:
-  lcd.print("Kp set");
-  break;
-  case 5:
-  lcd.print("Ki set");
-  break;
-  case 6:
   lcd.print("RESET");
   break;
   default:
   menu = 0;
   }
-  lcd.setCursor(11,0);
-  lcd.print("        ");
-  lcd.setCursor(11,0);
-  //lcd.print(clock);
-  if (clock >= 0) {
-    lcd.print(clock/3600);
-    lcd.print(":");
-    lcd.print((clock/60)%60);
-    lcd.print(":");
-    lcd.print(clock%60);  
-  }
-  else {
-    lcd.print("Timer off");
-  }
-  
-  lcd.setCursor(0,1);
-  switch (oven_state) {
-    case 0:
-      lcd.print("off      ");
-      break;
-    case 1:
-      lcd.print("light on ");
-      break;
-    case 2:
-      lcd.print("on no fan");
-      break;
-    case 3:
-      lcd.print("on fan on");
-      break;
-    default:
-      oven_state = 0;
-      break;
-  }
-  lcd.print(" ");
-  lcd.print(top_pwm_sp);
-  lcd.print(" ");
-  lcd.print(bottom_pwm_sp);
-  lcd.print("  ");
-
-  lcd.setCursor(0,2);
-
-  lcd.print(Input);
-  lcd.print(" ");
-  lcd.print(Setpoint);
-  lcd.print(" ");
-  lcd.print(top_bottom);
-  lcd.print("   ");
-
-  lcd.setCursor(0,3);
-  lcd.print(kp);
-  lcd.print(" ");
-  lcd.print(ki);
-  lcd.print(" ");
-  lcd.print(Output);
 
 
   btn1 = !digitalRead(A9);
@@ -306,40 +294,14 @@ void loop() {
       if (clock < -1) clock = -1;
       if (clock > 3600*5) clock = 3600*5;
     break;
-    case 3: //Characteristic
-    break;
-    case 4: //Kp set
-      changed = 0;
-      if (btn7) {kp += 0.01; changed = 1;}
-      if (btn6) {kp -= 0.01; changed = 1;}
-      if (kp > 10) {kp = 10; changed = 1;}
-      if (kp < -10) {kp = -10; changed = 1;}
-      if (changed == 1) EEPROM.put(eepr_kp_addr, kp);      
-      myPID.SetTunings(kp, ki, kd);
-    break;
-    case 5: //Ki set
-      changed = 0;
-      if (btn7) {ki += 0.01; changed = 1;}
-      if (btn6) {ki -= 0.01; changed = 1;}
-      if (ki > 10) {ki = 10; changed = 1;}
-      if (ki < -10) {ki = -10; changed = 1;}
-      if (changed == 1) EEPROM.put(eepr_ki_addr, ki);      
-      myPID.SetTunings(kp, ki, kd);
-    break;
-    case 6: //RESET all
+    case 3: //RESET all
       if (btn4) {
           clock = 0;
           Setpoint = 180;
           EEPROM.put(eepr_setpoint_addr, Setpoint);
           top_bottom = 0;
           EEPROM.put(eepr_topbottom_addr, top_bottom);
-          kp = 1.5;
-          EEPROM.put(eepr_kp_addr, kp); 
-          ki = 0.25;
-          EEPROM.put(eepr_ki_addr, ki);
-          kd = 0;
-          EEPROM.put(eepr_kd_addr, kd);
-          myPID.SetTunings(kp, ki, kd);
+//          myPID.SetTunings(kp, ki, kd);
           
           oven_state = 0;
           
@@ -350,5 +312,5 @@ void loop() {
     break;
   }
   
-    delay(100);
+    delay(50);
 }
